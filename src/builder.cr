@@ -10,17 +10,20 @@ end
 
 icons = {} of String => String
 
-def copy(node, xml)
+def copy(node, result)
   node.children.each do |child|
     next if child.text?
     next if child["stroke"]? == "none" && child["fill"]? == "none"
 
-    xml.element(child.name) do
-      child.attributes.each do |attribute|
-        xml.attribute(attribute.name, attribute.content)
-        copy(child, xml)
-      end
+    result << %(<#{child.name})
+
+    child.attributes.each do |attribute|
+      result << %( #{attribute.name}="#{attribute.content}")
     end
+
+    result << %(></#{child.name}>)
+
+    copy(child, result)
   end
 end
 
@@ -28,19 +31,19 @@ Dir.glob("tabler-icons/icons/*") do |file|
   document = XML.parse(File.read(file))
 
   if svg = document.first_element_child
-    string = XML.build(indent: "  ") do |xml|
-      xml.element("svg") do
-        xml.attribute("viewBox", svg["viewBox"])
-        xml.element("g") do
-          xml.attribute("style", "stroke-width: var(--tabler-stroke-width);")
-          xml.attribute("stroke-linejoin", svg["stroke-linejoin"])
-          xml.attribute("stroke-linecap", svg["stroke-linecap"])
-          xml.attribute("stroke", "currentColor")
-          xml.attribute("fill", svg["fill"])
+    string = String.build do |result|
+      result << %(<svg viewBox="#{svg["viewBox"]}">)
+      result << "<g"
+      result << %( stroke-linejoin="#{svg["stroke-linejoin"]}")
+      result << %( stroke-linejoin="#{svg["stroke-linecap"]}")
+      result << %( stroke-width="\#{strokeWidth}")
+      result << %( stroke="currentColor")
+      result << %( fill="#{svg["fill"]}">)
 
-          copy(svg, xml)
-        end
-      end
+      copy(svg, result)
+
+      result << "</g>"
+      result << "</svg>"
     end
 
     name =
@@ -55,7 +58,7 @@ end
 
 content =
   icons
-    .map { |name, html| "const #{name} =\n#{html}" }
+    .map { |name, html| "const #{name} =(strokeWidth : Number) {#{html}}" }
     .join("\n\n")
     .indent
 
@@ -65,18 +68,16 @@ source =
 mainContent =
   icons
     .keys
-    .map { |name| "<{ TablerIcons:#{name} }>" }
+    .map { |name| "<{ TablerIcons:#{name}(strokeWidth) }>" }
     .join("\n")
     .indent(8)
 
 main =
   <<-MINT
   component Main {
-    state strokeWidth : String = "1"
+    state strokeWidth : Number = 1
 
     style base {
-      --tabler-stroke-width: \#{strokeWidth};
-
       svg {
         height: 30px;
         width: 30px;
@@ -86,8 +87,8 @@ main =
     fun render : Html {
       <div::base>
         <input
-          onInput={(event : Html.Event) { next { strokeWidth = Dom.getValue(event.target) } }}
-          value={strokeWidth}
+          onInput={(event : Html.Event) { next { strokeWidth = Number.fromString(Dom.getValue(event.target)) or 0 } }}
+          value={Number.toString(strokeWidth)}
           step="0.25"
           type="range"
           min="1"
